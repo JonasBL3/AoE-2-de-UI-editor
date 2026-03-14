@@ -264,7 +264,7 @@
     border:none;
     background: rgba(74,163,255,0.06);
     border-radius:6px;
-    overflow:hidden;
+    overflow:visible;
     pointer-events:auto;
     --strokeColor: rgba(74,163,255,0.55);
     --strokeStyle: solid;
@@ -295,6 +295,18 @@
     --strokeColor: rgba(255,255,255,0.95);
     background: rgba(255,255,255,0.04);
   }
+  #hoverGhostLayer{
+    position:absolute; inset:0;
+    pointer-events:none;
+    z-index: 250000;
+  }
+  .hoverGhost{
+    position:absolute; box-sizing:border-box;
+    border: 1px dashed rgba(255,255,255,0.98);
+    background: rgba(255,255,255,0.045);
+    border-radius:6px;
+    pointer-events:none;
+  }
   /* Descendant highlight: when a parent is selected, all its (visible, selectable) children
      get a white highlight to make hierarchy relationships obvious. */
   .box.childHilite{
@@ -302,10 +314,11 @@
     background: rgba(255,255,255,0.06);
   }
   .label{
-    position:absolute; left:0; top: calc(-1.9em);
-    background:rgba(0,0,0,0.82); padding:5px 12px;
+    position:absolute; left:0; top: calc(-1.45em);
+    background:rgba(0,0,0,0.82); padding:3px 8px;
     pointer-events:none; white-space:nowrap;
-    font-size:18px; font-weight:600; line-height:1.2; border-radius:12px;
+    font-size:10px; font-weight:600; line-height:1.15; border-radius:8px;
+    color:#f2f5f8; z-index:12;
     text-shadow:0 1px 2px rgba(0,0,0,0.9);
   }
   .labelsHidden .label{ display:none !important; }
@@ -1622,6 +1635,13 @@ console.log("script start");
   }
   function restorePersistedItemPngs(){
     const mapObj = loadPersistedItemPngMap();
+    if (!hoverGhostLayer){
+      hoverGhostLayer = document.createElement("div");
+      hoverGhostLayer.id = "hoverGhostLayer";
+      worldEl.insertBefore(hoverGhostLayer, overlay);
+    }
+    hoverGhostLayer.innerHTML = "";
+
     for (const [id] of idToNode.entries()){
       const key = getItemPngStorageKey(id);
       const data = key ? String(mapObj[key] || "") : "";
@@ -1705,6 +1725,56 @@ console.log("script start");
   function getTextPreviewAnchor(id, n){
     const w = n?.obj;
     return String(w?.TextAnchor || "TopLeft");
+  }
+
+  const VIS_STATE_STORE_KEY = "aoe2ui_vis_states_v1";
+  function visPointerFromId(id){
+    const s = String(id || "");
+    const p = s.indexOf("|");
+    return p >= 0 ? s.slice(p + 1) : s;
+  }
+  function stableVisKeyForId(id){
+    const n = idToNode.get(id);
+    if (!n) return "";
+    const rec = getFileRec ? getFileRec(n.fileId) : null;
+    const fname = String(rec?.name || n.fileId || "");
+    return fname + "|" + visPointerFromId(id);
+  }
+  function loadPersistedVisibilityMap(){
+    try{
+      const raw = localStorage.getItem(VIS_STATE_STORE_KEY) || "{}";
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj === "object") ? obj : {};
+    }catch(_){ return {}; }
+  }
+  function savePersistedVisibilityMap(mapObj){
+    try{ localStorage.setItem(VIS_STATE_STORE_KEY, JSON.stringify(mapObj || {})); }catch(err){ console.error(err); }
+  }
+  function applyPersistedVisibilityStatesToCurrentNodes(){
+    const mapObj = loadPersistedVisibilityMap();
+    for (const [id] of idToNode.entries()){
+      const key = stableVisKeyForId(id);
+      if (!key) continue;
+      const st = mapObj[key];
+      if (st === "hidden"){
+        hiddenIds.add(id);
+        disabledIds.delete(id);
+      }else if (st === "disabled"){
+        if (!hiddenIds.has(id)) disabledIds.add(id);
+      }else if (st === "visible"){
+        hiddenIds.delete(id);
+        disabledIds.delete(id);
+      }
+    }
+  }
+  function persistVisibilityStatesForCurrentNodes(){
+    const mapObj = loadPersistedVisibilityMap();
+    for (const [id] of idToNode.entries()){
+      const key = stableVisKeyForId(id);
+      if (!key) continue;
+      mapObj[key] = getNodeVisState(id);
+    }
+    savePersistedVisibilityMap(mapObj);
   }
 
   function updateItemPngUI(){
@@ -1954,6 +2024,7 @@ console.log("script start");
   const offsetFrame = $("offsetFrame");
 
   const overlay = $("selectionOverlay");
+  let hoverGhostLayer = null;
   const hTL = $("hTL"), hTR = $("hTR"), hBL = $("hBL"), hBR = $("hBR");
   const hLeft = $("hLeft"), hRight = $("hRight"), hTop = $("hTop"), hBottom = $("hBottom");
 
@@ -2380,10 +2451,6 @@ const fileById = ()=>{ const m=new Map(); for (const r of files) m.set(r.id,r); 
 
   function cycleNodeVisState(id){
     // Visible -> Hidden -> Disabled -> Visible
-    const ancHidden = hasHiddenAncestor(id);
-    const ancDis = hasDisabledAncestor(id);
-    if (ancHidden || ancDis) return; // can't override while ancestor controls state
-
     const st = getNodeVisState(id);
     if (st==="visible"){
       hiddenIds.add(id);
@@ -2400,6 +2467,7 @@ const fileById = ()=>{ const m=new Map(); for (const r of files) m.set(r.id,r); 
       hiddenIds.delete(id);
       disabledIds.delete(id);
     }
+    persistVisibilityStatesForCurrentNodes();
   }
 
   function hasHiddenAncestor(id){
@@ -2423,6 +2491,7 @@ const fileById = ()=>{ const m=new Map(); for (const r of files) m.set(r.id,r); 
   function setNodeHidden(id, hidden){
     if (hidden) hiddenIds.add(id);
     else hiddenIds.delete(id);
+    persistVisibilityStatesForCurrentNodes();
   }
 
   
@@ -2629,8 +2698,8 @@ function baseNoExt(name){
     }
     if (n.layoutType==="viewport"){
       // Engine quirk (CommandPanel): BackgroundRight (Base) uses Collection.xopen/xclosed as its effective X anchor
-      // depending on the open/closed state. The JSON's ViewPort.xorigin is not the real screen-space anchor.
-      // We reflect this by forcing the *anchor point X* to (xopen|xclosed), while keeping normal Y behavior.
+      // depending on the open/closed state. These values are relative to the CommandPanel parent, not absolute screen-space,
+      // so BackgroundRight must move together with the rest of the CommandPanel when the panel itself is repositioned.
       if (isBackgroundRightBaseNode(n)){
         const rec = getFileRec(n.fileId);
         if (rec && rec.isCommandPanel){
@@ -2638,7 +2707,7 @@ function baseNoExt(name){
           const xeff = commandPanelPreviewXForFile(n.fileId, col);
           if (Number.isFinite(xeff)){
             const {ax,ay} = anchorOffset(vpW(n.vp), vpH(n.vp), vpAlign(n.vp));
-            return {x: xeff - ax, y: pTL.y + (n.vp.yorigin||0) - ay};
+            return {x: pTL.x + xeff - ax, y: pTL.y + (n.vp.yorigin||0) - ay};
           }
         }
       }
@@ -2737,10 +2806,11 @@ function baseNoExt(name){
 
       // Engine quirk (CommandPanel): BackgroundRight (Base) uses Collection.xopen/xclosed as the *real* X origin
       // (open/closed state), while its ViewPort.xorigin is effectively ignored by the game.
-      // So when you move it horizontally, we write back into xopen/xclosed instead of ViewPort.xorigin.
+      // These xopen/xclosed values are relative to the CommandPanel parent, so moving the whole panel should carry
+      // BackgroundRight with it, and moving BackgroundRight itself should write back a parent-relative value.
       if (isCommandPanelFileLoaded() && isBackgroundRightBaseNode(n) && fileRec?.json?.Collection){
         const anchorAbsX = absTL.x + ax;              // where the node's anchor point ends up in abs space
-        const xeff = Math.round(anchorAbsX);        // store as ABSOLUTE anchor X (Collection.xopen/xclosed are absolute screen-space)
+        const xeff = Math.round(anchorAbsX - pTL.x);  // store as parent-relative anchor X (Collection.xopen/xclosed)
         if (commandPanelPreviewOpen) fileRec.json.Collection.xopen = xeff;
         else fileRec.json.Collection.xclosed = xeff;
 
@@ -3109,6 +3179,7 @@ const nextParent = thisId || parentId;
     restorePersistedItemPngs();
     restorePersistedTextOverrides();
     restorePersistedTextAnchorOverrides();
+    applyPersistedVisibilityStatesToCurrentNodes();
     if (primaryId && !idToNode.has(primaryId)) primaryId = null;
     if (selectedIds.size===0) primaryId = null;
     else if (!primaryId || !selectedIds.has(primaryId)) primaryId = Array.from(selectedIds)[0];
@@ -3165,6 +3236,7 @@ const nextParent = thisId || parentId;
     hiddenIds.clear(); disabledIds.clear();
     (snap.hidden||[]).forEach(id=>hiddenIds.add(id));
     (snap.disabled||[]).forEach(id=>disabledIds.add(id));
+    persistVisibilityStatesForCurrentNodes();
   }
   function setAllHidden(on){
     if (on){
@@ -3174,14 +3246,17 @@ const nextParent = thisId || parentId;
       selectedIds.clear(); primaryId = null;
       hideAllActive = true;
     }else{
-      if (savedVisSnapshot) restoreVis(savedVisSnapshot);
+      hiddenIds.clear();
+      disabledIds.clear();
       hideAllActive = false;
+      savedVisSnapshot = null;
     }
     // Update buttons (two-button UX)
     if (hideAllBtn) hideAllBtn.disabled = hideAllActive || (files.length===0);
     if (showAllBtn) showAllBtn.disabled = (!hideAllActive) || (files.length===0);
     // In this build the main refresh entry-point is refreshAll() (boxes + anchors + world size).
     // Older code used renderAll(); keep this robust.
+    persistVisibilityStatesForCurrentNodes();
     if (typeof refreshAll === 'function') refreshAll();
     if (typeof renderTree === 'function') renderTree();
     if (typeof syncOverlay === 'function') syncOverlay(false);
@@ -3209,18 +3284,12 @@ function renderTreeNode(id){
     // visibility state button (cycles: Visible -> Hidden -> Disabled)
     const visBtn=document.createElement("div");
     visBtn.className="visBtn";
-    const ancHidden = hasHiddenAncestor(id);
-    const ancDis = hasDisabledAncestor(id);
-    const ctlDisabled = ancHidden || ancDis;
-    if (ctlDisabled) visBtn.classList.add("disabledCtl");
-
     const st = getNodeVisState(id);
     visBtn.textContent = (st==="visible") ? "👁" : (st==="hidden") ? "🚫" : "⦸";
     visBtn.title = (st==="visible") ? "Visible" : (st==="hidden") ? "Hidden" : "Disabled (click-through)";
 
     visBtn.addEventListener("click",(e)=>{
       e.stopPropagation();
-      if (ctlDisabled) return;
       cycleNodeVisState(id);
       // if current selection becomes hidden/disabled, clear it
       if (primaryId && (isNodeHiddenEffective(primaryId) || isNodeDisabledEffective(primaryId))) clearSelection();
@@ -3295,6 +3364,14 @@ function renderTreeNode(id){
       e.preventDefault();
       e.stopPropagation();
       toggleCommandPanelPreview();
+    });
+
+    row.addEventListener("mouseenter", ()=>{
+      setHoverId(id, true);
+    });
+
+    row.addEventListener("mouseleave", ()=>{
+      clearHover();
     });
 
     wrapper.appendChild(row);
@@ -4901,6 +4978,10 @@ function wireNudgePad(){
     refreshBoxes();
     refreshAnchors();
     updateWorldSize();
+    if (hoverId){
+      const includeSubtree = hoverIds && hoverIds.size > 1;
+      setHoverId(hoverId, includeSubtree);
+    }
   }
 
   // ==== Middle mouse panning ====
@@ -4928,21 +5009,74 @@ function wireNudgePad(){
 
   // ==== Hover highlight (preselect hint) ====
   let hoverId = null;
-  function setHoverId(id){
-    if (hoverId === id) return;
-    if (hoverId){
-      const prev = idToBox.get(hoverId);
+  let hoverIds = new Set();
+  function getSubtreeIds(rootId){
+    const out = [];
+    if (!rootId || !idToNode.has(rootId)) return out;
+    const stack = [rootId];
+    while (stack.length){
+      const id = stack.pop();
+      if (!id || !idToNode.has(id)) continue;
+      out.push(id);
+      const kids = getChildren(id);
+      for (let i=kids.length-1;i>=0;i--) stack.push(kids[i]);
+    }
+    return out;
+  }
+  function clearHoverGhosts(){
+    if (hoverGhostLayer) hoverGhostLayer.innerHTML = "";
+  }
+  function addHoverGhost(id){
+    if (!hoverGhostLayer) return;
+    const n = idToNode.get(id);
+    if (!n) return;
+    const tl = absBoxTopLeftGame(id);
+    const sz = nodeSizeGame(n);
+    const px = gameToPx(tl);
+    const g = document.createElement("div");
+    g.className = "hoverGhost";
+    const depth = nodeDepth(id);
+    const bottomY = (tl.y + sz.h);
+    const yZi = Math.min(29999, Math.max(0, Math.floor(bottomY)));
+    const baseZi = 1000 + (depth * 30000) + yZi;
+    g.style.zIndex = String(baseZi);
+    g.style.left = `${Math.round(px.x)}px`;
+    g.style.top = `${Math.round(px.y)}px`;
+    g.style.width = `${Math.max(1, Math.round(sz.w*zoomFactor()))}px`;
+    g.style.height = `${Math.max(1, Math.round(sz.h*zoomFactor()))}px`;
+    hoverGhostLayer.appendChild(g);
+  }
+  function setHoverId(id, includeSubtree=false){
+    const targetIds = new Set();
+    if (id){
+      const ids = includeSubtree ? getSubtreeIds(id) : [id];
+      ids.forEach(x=>targetIds.add(x));
+    }
+    if (hoverId === id && hoverIds.size === targetIds.size){
+      let same = true;
+      for (const x of targetIds){ if (!hoverIds.has(x)) { same = false; break; } }
+      if (same) return;
+    }
+    for (const prevId of hoverIds){
+      const prev = idToBox.get(prevId);
       if (prev) prev.classList.remove("hovered");
     }
+    clearHoverGhosts();
     hoverId = id;
-    if (hoverId){
-      const el = idToBox.get(hoverId);
-      if (el) el.classList.add("hovered");
+    hoverIds = targetIds;
+    for (const hid of hoverIds){
+      const el = idToBox.get(hid);
+      const hidden = isNodeHiddenEffective(hid);
+      if (el && !hidden){
+        el.classList.add("hovered");
+      }else{
+        addHoverGhost(hid);
+      }
     }
   }
 
   function clearHover(){
-    setHoverId(null);
+    setHoverId(null, false);
   }
 
   function pickTopmostBoxUnderClient(x, y){
@@ -5989,7 +6123,7 @@ if (subtreeScaleEnabled && dragState.kidsAbsSnap){
     setActiveFileById(toActivate.id);
 
     // IMPORTANT: after loading, rebuild the combined overlay model so tree + canvas actually render.
-    rebuildModel(false);
+    rebuildModel(!replace);
     renderTree();
     refreshAll();
     syncOverlay(false);
