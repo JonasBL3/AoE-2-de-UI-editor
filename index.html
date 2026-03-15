@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>AoE2DE UI Layout Editor — v107 (debug)</title>
+<title>AoE2DE UI Layout Editor — v179</title>
 <style>
   :root{
     --ui: 0.85;
@@ -96,6 +96,23 @@
   .tbStatus #log{ margin:0 0 0 10px; max-width:46vw; }
 
   #status{ margin-left:auto; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45vw; }
+
+
+  #miniViewDock{
+    position:absolute; right:12px; bottom:12px; z-index:260000;
+    width:230px; background:rgba(18,18,18,.9); border:1px solid rgba(255,255,255,.14);
+    border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,.35); overflow:hidden;
+    backdrop-filter: blur(4px);
+  }
+  #miniViewHead{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:8px; padding:6px 8px; font-size:12px; color:#ddd;
+    background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  #miniViewCanvas{ display:block; width:100%; height:130px; background:rgba(255,255,255,.03); }
+  #miniViewNote{ font-size:11px; opacity:.72; }
+  #miniViewDock{ display:none !important; }
+  #versionPill{ opacity:.85; font-weight:700; letter-spacing:.02em; }
 
   #app{ display:flex; flex:1; min-height:0; }
   #sidebar{
@@ -381,8 +398,55 @@
     box-sizing:border-box;
     pointer-events:auto;
   }
-  #selectionOverlay .handle.edgeX{ cursor: ew-resize; }
-  #selectionOverlay .handle.edgeY{ cursor: ns-resize; }
+  #selectionOverlay .handle.corner{
+    z-index: 2000003; /* keep corners above the full-edge hit zones */
+  }
+  #selectionOverlay .handle.edgeX,
+  #selectionOverlay .handle.edgeY{
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    z-index: 2000002;
+  }
+  #selectionOverlay .handle.edgeX{
+    cursor: ew-resize;
+    width: 14px;
+    height: calc(100% - 18px); /* leave the corners free/clickable */
+    top: 9px !important;
+    transform: none !important;
+  }
+  #selectionOverlay .handle.edgeY{
+    cursor: ns-resize;
+    height: 14px;
+    width: calc(100% - 18px); /* leave the corners free/clickable */
+    left: 9px !important;
+    transform: none !important;
+  }
+  #selectionOverlay .handle.edgeX::before{
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    bottom: 12px;
+    width: 1px;
+    transform: translateX(-50%);
+    background: #ffd34a;
+    box-shadow: none;
+    border-radius: 999px;
+  }
+  #selectionOverlay .handle.edgeY::before{
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    right: 12px;
+    height: 1px;
+    transform: translateY(-50%);
+    background: #ffd34a;
+    box-shadow: none;
+    border-radius: 999px;
+  }
   #selectionOverlay .handle.corner.tl{ cursor:nwse-resize; }
   #selectionOverlay .handle.corner.br{ cursor:nwse-resize; }
   #selectionOverlay .handle.corner.tr{ cursor:nesw-resize; }
@@ -390,10 +454,27 @@
 
   #selectionOverlay.group{
     border-color:#8d5cff;
-    background: rgba(141,92,255,0.12);
+    border-width: 1px; /* multi/group selection should read lighter */
+    background: rgba(141,92,255,0.015);
   }
   #selectionOverlay.group .handle{
     background:#8d5cff;
+  }
+  #selectionOverlay.group .handle.corner{
+    width: 8px; height: 8px;
+    border-width: 1px;
+    border-radius: 999px;
+  }
+  #selectionOverlay.group .handle.edgeX,
+  #selectionOverlay.group .handle.edgeY{
+    background: transparent;
+    border: 0;
+  }
+  #selectionOverlay.group .handle.edgeX::before,
+  #selectionOverlay.group .handle.edgeY::before{
+    background: #8d5cff;
+    box-shadow: none;
+    opacity: .8;
   }
 
   #errorToast{
@@ -1026,6 +1107,7 @@
   <button id="closeFileBtn" disabled>Close</button>
   <button id="undoBtn" disabled>Undo</button>
   <button id="redoBtn" disabled>Redo</button>
+  <button id="groupBtn" disabled title="Lock selected items together so they behave as one">Group</button>
 
   <span class="sep"></span>
 
@@ -1045,6 +1127,7 @@
   <input id="itemPngInput" type="file" accept="image/png" hidden/>
   <button id="clearItemPngBtn" disabled>Clear PNG</button>
   <button id="clearSavedDataBtn" title="Remove all editor-local saved data">Clear saved</button>
+  <button id="githubBtn" title="Open project on GitHub">GitHub</button>
   <button id="zoomOut" title="Zoom out">−</button>
   <select id="zoomSelect"></select>
   <button id="zoomIn" title="Zoom in">+</button>
@@ -1072,12 +1155,14 @@
     <option>BottomLeft</option><option>BottomCentre</option><option>BottomRight</option>
   </select>
   <span class="miniLabel">Pt</span><input id="inspPt" type="number" step="1" style="width:72px"/>
+  <span class="miniLabel">Color</span><input id="inspTextColor" type="color" title="Text color (exported to JSON)" style="width:52px;padding:2px;height:32px"/>
   <span id="nudgeHint" class="hint"></span>
 
   <span class="sep"></span>
 
   <div id="status" class="statusPill"></div>
   <div id="log" class="logPill"></div>
+  <div id="versionPill" class="statusPill" title="App version">v167</div>
 
   <!-- Hidden placeholders for legacy optional UI (keeps bindings happy) -->
   <select id="alignSelect" style="display:none"></select>
@@ -1135,6 +1220,10 @@
 <div class="handle edgeY" id="hTop"></div>
 <div class="handle edgeY" id="hBottom"></div>
 </div>
+</div>
+<div id="miniViewDock">
+  <div id="miniViewHead"><span>Mini view</span><span id="miniViewNote">full layout</span></div>
+  <canvas id="miniViewCanvas" width="230" height="130"></canvas>
 </div>
 </div>
 </div>
@@ -1570,6 +1659,7 @@ console.log("script start");
   const exportAllBtn = $("exportAllBtn");
   const undoBtn = $("undoBtn");
   const redoBtn = $("redoBtn");
+  const groupBtn = $("groupBtn");
   const hideAllBtn = $("hideAllBtn");
   const showAllBtn = $("showAllBtn");
   const labelsToggleBtn = $("labelsToggleBtn");
@@ -1863,6 +1953,14 @@ console.log("script start");
     });
   }
 
+  const githubBtn = $("githubBtn");
+  if (githubBtn){
+    githubBtn.addEventListener("click", ()=>{
+      try{ window.open("https://github.com/JonasBL3/AoE2DE-UI-editor", "_blank", "noopener,noreferrer"); }
+      catch(_){ location.href = "https://github.com/JonasBL3/AoE2DE-UI-editor"; }
+    });
+  }
+
   if (itemPngBtn && itemPngInput){
     itemPngBtn.addEventListener("click", ()=>{
       if (!primaryId || !idToNode.has(primaryId)) return;
@@ -1997,6 +2095,7 @@ console.log("script start");
   const inspAX = $("inspAX");
   const inspAY = $("inspAY");
   const inspPt = $("inspPt");
+  const inspTextColor = $("inspTextColor");
   const inspText = $("inspText");
   const inspTextAnchor = $("inspTextAnchor");
   const inspX = $("inspX");
@@ -2024,6 +2123,8 @@ console.log("script start");
   const offsetFrame = $("offsetFrame");
 
   const overlay = $("selectionOverlay");
+  const miniViewCanvas = $("miniViewCanvas");
+  const miniViewNote = $("miniViewNote");
   let hoverGhostLayer = null;
   const hTL = $("hTL"), hTR = $("hTR"), hBL = $("hBL"), hBR = $("hBR");
   const hLeft = $("hLeft"), hRight = $("hRight"), hTop = $("hTop"), hBottom = $("hBottom");
@@ -2119,7 +2220,9 @@ function showError(msg){
       hiddenIds: Array.from(hiddenIds),
       disabledIds: Array.from(disabledIds),
       selectedIds: Array.from(selectedIds),
-      primaryId: primaryId
+      primaryId: primaryId,
+      groupDefs: deepClone(groupDefs),
+      nextGroupId: nextGroupId
     };
   }
 
@@ -2147,6 +2250,8 @@ function showError(msg){
     hiddenIds = new Set(snap.hiddenIds||[]);
     selectedIds = new Set(snap.selectedIds||[]);
     primaryId = snap.primaryId || null;
+    groupDefs = Array.isArray(snap.groupDefs) ? deepClone(snap.groupDefs) : [];
+    nextGroupId = Number.isFinite(snap.nextGroupId) ? snap.nextGroupId : 1;
 
     rebuildModel(true);
     renderTree();
@@ -2156,6 +2261,7 @@ function showError(msg){
     refreshFileSelect();
     updateCommandPanelUI();
     updateUndoRedoButtons();
+    updateGroupButtonUI();
   }
 
   function detectFormat(text){
@@ -2190,6 +2296,7 @@ function showError(msg){
     refreshAll();
     applySelectionStyling(false);
     updateInspector();
+    updateGroupButtonUI();
     updateUndoRedoButtons();
   }
   function undo(){
@@ -2225,6 +2332,7 @@ function showError(msg){
 
 if (undoBtn) undoBtn.addEventListener("click", undo);
   if (redoBtn) redoBtn.addEventListener("click", redo);
+  if (groupBtn) groupBtn.addEventListener("click", groupButtonAction);
   window.addEventListener("keydown",(e)=>{
     if (!(e.ctrlKey || e.metaKey)) return;
     const k = String(e.key||"").toLowerCase();
@@ -2394,6 +2502,104 @@ if (undoBtn) undoBtn.addEventListener("click", undo);
 
   let selectedIds = new Set();
   let primaryId = null;
+  let groupDefs = []; // [{gid,label,ids:[]}] editor-only locked-together groups
+  let nextGroupId = 1;
+  const idToGroup = new Map();
+
+  function rebuildGroupIndex(){
+    idToGroup.clear();
+    for (const g of groupDefs){
+      if (!g || !Array.isArray(g.ids)) continue;
+      for (const id of g.ids){ if (id) idToGroup.set(id, g.gid); }
+    }
+  }
+  function pruneGroups(){
+    const valid = new Set(idToNode.keys());
+    groupDefs = groupDefs.map(g=>({ gid:g.gid, label:g.label||String(g.gid), ids:Array.from(new Set((g.ids||[]).filter(id=>valid.has(id))) ) })).filter(g=>g.ids.length>=2);
+    rebuildGroupIndex();
+  }
+  function getGroupDefById(gid){ return groupDefs.find(g=>g.gid===gid) || null; }
+  function getGroupMembers(id){
+    const gid = idToGroup.get(id);
+    if (!gid) return [id];
+    const g = getGroupDefById(gid);
+    return g ? g.ids.slice() : [id];
+  }
+  function expandIdsWithGroups(ids){
+    const out = [];
+    const seen = new Set();
+    for (const id of (ids||[])){
+      for (const mid of getGroupMembers(id)){
+        if (!seen.has(mid)){ seen.add(mid); out.push(mid); }
+      }
+    }
+    return out;
+  }
+  function getSelectionGroupId(){
+    const ids = Array.from(selectedIds||[]);
+    if (!ids.length) return null;
+    const gids = Array.from(new Set(ids.map(id=>idToGroup.get(id)).filter(Boolean)));
+    if (gids.length!==1) return null;
+    const g = getGroupDefById(gids[0]);
+    if (!g) return null;
+    const sel = new Set(ids);
+    if (g.ids.length !== sel.size) return null;
+    for (const id of g.ids) if (!sel.has(id)) return null;
+    return g.gid;
+  }
+  function updateGroupButtonUI(){
+    if (!groupBtn) return;
+    const ids = Array.from(selectedIds||[]);
+    const gid = getSelectionGroupId();
+    groupBtn.disabled = !(gid || ids.length>=2);
+    groupBtn.textContent = gid ? "Ungroup" : "Group";
+    groupBtn.classList.toggle("active", !!gid);
+  }
+  function removeIdsFromGroups(ids){
+    if (!ids || !ids.length) return;
+    const kill = new Set(ids);
+    groupDefs = groupDefs.map(g=>({ gid:g.gid, label:g.label||String(g.gid), ids:(g.ids||[]).filter(id=>!kill.has(id)) })).filter(g=>g.ids.length>=2);
+    rebuildGroupIndex();
+  }
+  function groupCurrentSelection(){
+    const rawIds = expandIdsWithGroups(selectionList());
+    let ids = topmostSelected(rawIds);
+    if (ids.length < 2) ids = rawIds.slice();
+    ids = Array.from(new Set(ids));
+    if (ids.length<2){
+      statusEl.textContent = "Select at least 2 items to group";
+      return;
+    }
+    const before = snapshotWorkspace();
+    removeIdsFromGroups(ids);
+    const gid = `grp${nextGroupId++}`;
+    groupDefs.push({ gid, label:`G${nextGroupId-1}`, ids: ids.slice() });
+    rebuildGroupIndex();
+    selectedIds = new Set(ids);
+    primaryId = ids[0] || null;
+    renderTree();
+    applySelectionStyling(false);
+    updateInspector();
+    updateGroupButtonUI();
+    pushUndo(before);
+    statusEl.textContent = `Grouped ${ids.length} items`;
+  }
+  function ungroupCurrentSelection(){
+    const gid = getSelectionGroupId();
+    if (!gid) return;
+    const before = snapshotWorkspace();
+    groupDefs = groupDefs.filter(g=>g.gid!==gid);
+    rebuildGroupIndex();
+    renderTree();
+    applySelectionStyling(false);
+    updateInspector();
+    pushUndo(before);
+    statusEl.textContent = "Group removed";
+  }
+  function groupButtonAction(){
+    if (getSelectionGroupId()) ungroupCurrentSelection();
+    else groupCurrentSelection();
+  }
 
   // node = {
   //   id, parentId, name, layoutType("viewport"|"anchor"), vp, anchor, obj
@@ -3179,6 +3385,7 @@ const nextParent = thisId || parentId;
     restorePersistedItemPngs();
     restorePersistedTextOverrides();
     restorePersistedTextAnchorOverrides();
+    pruneGroups();
     applyPersistedVisibilityStatesToCurrentNodes();
     if (primaryId && !idToNode.has(primaryId)) primaryId = null;
     if (selectedIds.size===0) primaryId = null;
@@ -3198,6 +3405,7 @@ const nextParent = thisId || parentId;
     updateLabelVisibilityUI();
   updateTextVisibilityUI();
     updateItemPngUI();
+    updateGroupButtonUI();
     undoBtn.disabled = (undoStack.length===0);
     redoBtn.disabled = (redoStack.length===0);
     snapBtn.disabled = false;
@@ -3303,6 +3511,16 @@ function renderTreeNode(id){
     text.textContent=n?.name||"Node";
     row.appendChild(text);
 
+    const gid = idToGroup.get(id);
+    if (gid){
+      const g = getGroupDefById(gid);
+      const badge = document.createElement("div");
+      badge.className = "warnBadge";
+      badge.textContent = g?.label || "G";
+      badge.title = "Grouped together";
+      row.appendChild(badge);
+    }
+
     // CommandPanel UX: BackgroundRight (Base) is a toggle control node.
     if (isCommandPanelControlNode(n)){
       const badge = document.createElement("div");
@@ -3335,7 +3553,7 @@ function renderTreeNode(id){
             if (!idToNode.has(rid)) continue;
             if (isNodeHiddenEffective(rid) || isNodeDisabledEffective(rid)) continue;
             ensureActiveFileForNode(rid);
-            selectedIds.add(rid);
+            for (const gid of expandIdsWithGroups([rid])) selectedIds.add(gid);
           }
           primaryId = id;
         } else {
@@ -3728,19 +3946,112 @@ function renderTree(){
     }
     return null;
   }
+  function getFontTextColorRefs(widgetObj){
+    const out = [];
+    if (!widgetObj || typeof widgetObj!=="object") return out;
+    const sm = widgetObj.StateMaterials;
+    if (!sm || typeof sm!=="object") return out;
+    for (const k of Object.keys(sm)){
+      const st = sm[k];
+      if (!st || typeof st!=="object") continue;
+      const f = st.Font;
+      const c = f && typeof f==="object" ? f.TextColor : null;
+      if (c && typeof c === "object" && ("r" in c) && ("g" in c) && ("b" in c)){
+        out.push({colorObj:c});
+      }
+    }
+    return out;
+  }
+
+  function textColorScale(colorObj){
+    if (!colorObj || typeof colorObj !== "object") return 1;
+    const vals = [Number(colorObj.r), Number(colorObj.g), Number(colorObj.b), Number(colorObj.a)];
+    return vals.some(v => Number.isFinite(v) && v > 1.5) ? 255 : 1;
+  }
+
+  function colorObjToHex(colorObj){
+    if (!colorObj || typeof colorObj !== "object") return "#ffffff";
+    const scale = textColorScale(colorObj);
+    const to255 = (v)=>{
+      v = Number(v);
+      if (!Number.isFinite(v)) return 255;
+      if (scale === 1) v = v * 255;
+      return Math.max(0, Math.min(255, Math.round(v)));
+    };
+    const h = n => n.toString(16).padStart(2, "0");
+    return `#${h(to255(colorObj.r))}${h(to255(colorObj.g))}${h(to255(colorObj.b))}`;
+  }
+
+  function colorObjToCss(colorObj){
+    if (!colorObj || typeof colorObj !== "object") return "rgba(255,255,255,0.92)";
+    const scale = textColorScale(colorObj);
+    const to255 = (v)=>{
+      v = Number(v);
+      if (!Number.isFinite(v)) return 255;
+      if (scale === 1) v = v * 255;
+      return Math.max(0, Math.min(255, Math.round(v)));
+    };
+    let a = Number(colorObj.a);
+    if (!Number.isFinite(a)) a = (scale===255 ? 255 : 1);
+    if (scale === 255) a = a / 255;
+    a = Math.max(0, Math.min(1, a));
+    return `rgba(${to255(colorObj.r)}, ${to255(colorObj.g)}, ${to255(colorObj.b)}, ${a.toFixed(3)})`;
+  }
+
+  function getAnyTextColor(widgetObj){
+    const refs = getFontTextColorRefs(widgetObj);
+    for (const r of refs){
+      return colorObjToHex(r.colorObj);
+    }
+    return null;
+  }
+
+  function applyHexToColorObj(colorObj, hex){
+    if (!colorObj || typeof colorObj !== "object" || typeof hex !== "string") return;
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+    if (!m) return;
+    const s = m[1];
+    const r = parseInt(s.slice(0,2),16);
+    const g = parseInt(s.slice(2,4),16);
+    const b = parseInt(s.slice(4,6),16);
+    const scale = textColorScale(colorObj);
+    if (scale === 255){
+      colorObj.r = r; colorObj.g = g; colorObj.b = b;
+    }else{
+      colorObj.r = +(r/255).toFixed(6);
+      colorObj.g = +(g/255).toFixed(6);
+      colorObj.b = +(b/255).toFixed(6);
+    }
+  }
 
   function updateTextInspector(n){
-    if (!inspPt || !inspText){
+    if (!inspPt || !inspText || !inspTextColor){
       return;
     }
     const w = n?.obj || null;
     const pt = getAnyPointSize(w);
-    const hasPt = (pt!==null);
+    const textColor = getAnyTextColor(w);
     const isLabel = String(w?.Type||"") === "Label";
 
-    inspPt.disabled = !hasPt;
-    inspText.disabled = !isLabel;
-    if (inspTextAnchor) inspTextAnchor.disabled = !isLabel;
+    const ids = selectionList();
+    let anyHasPt = (pt!==null);
+    let anyHasTextColor = (textColor!==null);
+    let anyIsLabel = isLabel;
+    if (ids.length > 1){
+      for (const id of ids){
+        const sn = idToNode.get(id);
+        if (!sn) continue;
+        if (getAnyPointSize(sn.obj) !== null) anyHasPt = true;
+        if (getAnyTextColor(sn.obj) !== null) anyHasTextColor = true;
+        if (String(sn?.obj?.Type||"") === "Label") anyIsLabel = true;
+        if (anyHasPt && anyHasTextColor && anyIsLabel) break;
+      }
+    }
+
+    inspPt.disabled = !anyHasPt;
+    inspTextColor.disabled = !anyHasTextColor;
+    inspText.disabled = !anyIsLabel;
+    if (inspTextAnchor) inspTextAnchor.disabled = !anyIsLabel;
     if (!inspText.dataset || inspText.dataset.userEditing !== "1"){
       inspText.value = isLabel ? getTextPreviewValue(primaryId, n) : "";
     }
@@ -3748,7 +4059,11 @@ function renderTree(){
       inspTextAnchor.value = isLabel ? getTextPreviewAnchor(primaryId, n) : "";
     }
 
-    setInp(inspPt, hasPt ? pt : null);
+    setInp(inspPt, anyHasPt ? pt : null);
+    if ((!inspTextColor.dataset || inspTextColor.dataset.userEditing !== "1")){
+      inspTextColor.value = anyHasTextColor ? (textColor || "#ffffff") : "#ffffff";
+    }
+    updateGroupButtonUI();
   }
 
 
@@ -4022,7 +4337,7 @@ function renderTree(){
       });
     };
 
-    [inspW,inspH,inspAX,inspAY,inspX,inspY,inspPt,inspText,inspTextAnchor].forEach(trackManualEdit);
+    [inspW,inspH,inspAX,inspAY,inspX,inspY,inspPt,inspText,inspTextAnchor,inspTextColor].forEach(trackManualEdit);
 
     const onChange = (el, handler)=>{
       if (!el) return;
@@ -4231,6 +4546,34 @@ function renderTree(){
       statusEl.textContent = (ids.length>1) ? `TextAnchor updated (${ids.length} items)` : "TextAnchor updated";
     });
 
+    onChange(inspTextColor, ()=>{
+      if (!fileRec || !primaryId || !inspTextColor) return;
+      const value = String(inspTextColor.value || '').trim();
+      if (!/^#([0-9a-fA-F]{6})$/.test(value)) return;
+      const ids = selectionList();
+      if (!ids.length) return;
+      const before = snapshotWorkspace();
+      let changed = 0;
+      for (const id of ids){
+        const n = idToNode.get(id);
+        if (!n) continue;
+        const refs = getFontTextColorRefs(n.obj);
+        if (!refs.length) continue;
+        for (const r of refs){
+          applyHexToColorObj(r.colorObj, value);
+        }
+        changed++;
+        const el = idToBox.get(id);
+        if (el) updateTextPreview(id, n, el, zoomFactor());
+      }
+      if (!changed) return;
+      refreshAll();
+      syncOverlay(false);
+      updateInspector();
+      pushUndo(before);
+      statusEl.textContent = (changed>1) ? `Text color updated (${changed} items)` : 'Text color updated';
+    });
+
 onChange(inspAX, ()=>{
       const ax = num(inspAX), ay = num(inspAY);
       if (ax==null || ay==null) return;
@@ -4294,6 +4637,7 @@ function clearSelection(){
   applySelectionStyling(false);
   updateInspector();
   updateDimsReadout();
+  updateGroupButtonUI();
 }
 
 function selectOnly(id){
@@ -4301,45 +4645,49 @@ function selectOnly(id){
   if (isNodeHiddenEffective(id) || isNodeDisabledEffective(id)) return;
   ensureActiveFileForNode(id);
   primaryId = id;
-  selectedIds.clear();
-  selectedIds.add(id);
+  selectedIds = new Set(expandIdsWithGroups([id]));
   applySelectionStyling(true);
   updateAlignUI();
   updateInspector();
   updateDimsReadout();
   focusTreeRow(primaryId);
+  updateGroupButtonUI();
 }
 
 function toggleSelect(id){
   if (!id || !idToNode.has(id)) return;
   if (isNodeHiddenEffective(id) || isNodeDisabledEffective(id)) return;
   ensureActiveFileForNode(id);
-  if (selectedIds.has(id)){
-    selectedIds.delete(id);
-    if (primaryId===id){
+  const mids = expandIdsWithGroups([id]);
+  const allSelected = mids.every(mid=>selectedIds.has(mid));
+  if (allSelected){
+    mids.forEach(mid=>selectedIds.delete(mid));
+    if (primaryId===id || !selectedIds.has(primaryId)){
       primaryId = selectedIds.size ? Array.from(selectedIds)[selectedIds.size-1] : null;
     }
   } else {
-    selectedIds.add(id);
+    mids.forEach(mid=>selectedIds.add(mid));
     primaryId = id;
   }
   if (!primaryId) {
     applySelectionStyling(false);
     updateInspector();
     updateDimsReadout();
-  if (primaryId) focusTreeRow(primaryId);
+    updateGroupButtonUI();
+    if (primaryId) focusTreeRow(primaryId);
     return;
   }
   applySelectionStyling(true);
   updateAlignUI();
   updateInspector();
   updateDimsReadout();
+  updateGroupButtonUI();
 }
 
 function selectionList(){
   // Always include primary first for deterministic behavior
   if (!primaryId) return [];
-  const ids = Array.from(selectedIds);
+  const ids = expandIdsWithGroups(Array.from(selectedIds));
   if (ids.length===0) return [primaryId];
   if (!ids.includes(primaryId)) ids.push(primaryId);
   // move primary to front
@@ -4356,6 +4704,7 @@ function applySelectionStyling(scrollCanvas){
     overlay.style.display="none";
     alignSelect.disabled=true;
     updateInspector();
+    renderMiniView();
     return;
   }
 
@@ -4711,8 +5060,8 @@ function wireNudgePad(){
     showMarqueeRectGame({x0: selRect.x0, y0: selRect.y0, x1: selRect.x1, y1: selRect.y1});
     const mode = (e.clientX < marqueeState.sx) ? 'touch' : 'inside';
     const hits = marqueeHitTest(selRect, mode);
-    const next = new Set(marqueeState.baseSel);
-    for (const id of hits) next.add(id);
+    const next = new Set(expandIdsWithGroups(Array.from(marqueeState.baseSel)));
+    for (const id of hits) for (const mid of expandIdsWithGroups([id])) next.add(mid);
     selectedIds = next;
     primaryId = hits.length ? hits[hits.length-1] : (primaryId && next.has(primaryId) ? primaryId : (next.size? Array.from(next)[next.size-1] : null));
     syncOverlay(false);
@@ -4892,10 +5241,13 @@ function wireNudgePad(){
     const text = getTextPreviewValue(id, n);
     if (!text.trim()) return null;
     const pointSize = getAnyPointSize(w);
+    const textColorRefs = getFontTextColorRefs(w);
+    const colorCss = textColorRefs.length ? colorObjToCss(textColorRefs[0].colorObj) : null;
     return {
       text,
       textAnchor: getTextPreviewAnchor(id, n),
       pointSize: Number.isFinite(pointSize) ? pointSize : null,
+      colorCss,
     };
   }
 
@@ -4915,6 +5267,7 @@ function wireNudgePad(){
     txt.style.alignItems = flex.align;
     const pxSize = info.pointSize ? Math.max(8, Math.round(info.pointSize * z * 0.9)) : Math.max(8, Math.round(12 * z));
     txt.style.fontSize = `${pxSize}px`;
+    txt.style.color = info.colorCss || 'rgba(255,255,255,0.92)';
   }
 
   function refreshBoxes(){
@@ -4974,6 +5327,55 @@ function wireNudgePad(){
       m.style.top  = `${Math.round(px.y)}px`;
     }
   }
+
+  function renderMiniView(){
+    if (!miniViewCanvas) return;
+    const ctx = miniViewCanvas.getContext("2d");
+    if (!ctx) return;
+    const cssW = miniViewCanvas.clientWidth || 230;
+    const cssH = miniViewCanvas.clientHeight || 130;
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const needW = Math.round(cssW * dpr), needH = Math.round(cssH * dpr);
+    if (miniViewCanvas.width !== needW || miniViewCanvas.height !== needH){
+      miniViewCanvas.width = needW; miniViewCanvas.height = needH;
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,cssW,cssH);
+    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    ctx.fillRect(0,0,cssW,cssH);
+    const pad = 8;
+    const scale = Math.min((cssW-pad*2)/SCREEN_W, (cssH-pad*2)/SCREEN_H);
+    const ox = Math.round((cssW - SCREEN_W*scale)/2);
+    const oy = Math.round((cssH - SCREEN_H*scale)/2);
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ox+0.5, oy+0.5, Math.max(1, Math.round(SCREEN_W*scale)-1), Math.max(1, Math.round(SCREEN_H*scale)-1));
+    if (!fileRec || !idToNode || !idToNode.size){
+      if (miniViewNote) miniViewNote.textContent = "empty";
+      return;
+    }
+    for (const [id,n] of idToNode.entries()){
+      if (isNodeHiddenEffective(id)) continue;
+      const tl = absBoxTopLeftGame(id);
+      const sz = nodeSizeGame(n);
+      const x = ox + tl.x*scale;
+      const y = oy + tl.y*scale;
+      const w = Math.max(1, sz.w*scale);
+      const h = Math.max(1, sz.h*scale);
+      const disabled = isNodeDisabledEffective(id);
+      const hovered = hoverIds && hoverIds.has(id);
+      const selected = selectedIds && selectedIds.has(id);
+      ctx.fillStyle = disabled ? "rgba(255,90,90,0.12)" : "rgba(255,255,255,0.05)";
+      ctx.fillRect(x, y, w, h);
+      ctx.lineWidth = hovered ? 1.5 : 1;
+      ctx.strokeStyle = selected ? "rgba(255,210,64,0.95)" : hovered ? "rgba(255,255,255,0.95)" : disabled ? "rgba(255,90,90,0.85)" : "rgba(150,210,255,0.75)";
+      ctx.strokeRect(Math.round(x)+0.5, Math.round(y)+0.5, Math.max(1, Math.round(w)-1), Math.max(1, Math.round(h)-1));
+    }
+    if (miniViewNote){
+      const count = Array.from(idToNode.keys()).filter(id=>!isNodeHiddenEffective(id)).length;
+      miniViewNote.textContent = `${count} visible`;
+    }
+  }
   function refreshAll(){
     refreshBoxes();
     refreshAnchors();
@@ -4982,6 +5384,7 @@ function wireNudgePad(){
       const includeSubtree = hoverIds && hoverIds.size > 1;
       setHoverId(hoverId, includeSubtree);
     }
+    renderMiniView();
   }
 
   // ==== Middle mouse panning ====
@@ -5073,6 +5476,7 @@ function wireNudgePad(){
         addHoverGhost(hid);
       }
     }
+    renderMiniView();
   }
 
   function clearHover(){
@@ -5191,6 +5595,10 @@ function beginMoveDrag(e){
       const start = {x:e.clientX, y:e.clientY};
 
       const itemSnaps = [];
+      const selectedSet = new Set(ids);
+      const kidsAbsSnap = [];
+      const seenKids = new Set();
+
       for (const id of ids){
         const n=idToNode.get(id);
         if (!n) continue;
@@ -5205,9 +5613,34 @@ function beginMoveDrag(e){
           const sz=nodeSizeGame(n);
           itemSnaps.push({id, type:'viewport', tl, w:sz.w, h:sz.h});
         }
+
+        // Snapshot descendants of each selected item so they can stay pinned in absolute space
+        // during group resize, unless they are also part of the selected group.
+        for (const cid of getDescendants(id)){
+          if (selectedSet.has(cid) || seenKids.has(cid)) continue;
+          seenKids.add(cid);
+          const cn=idToNode.get(cid);
+          if (!cn) continue;
+
+          if (isMapViewImageNode(cn)){
+            const r = mapViewImageAbsRect(cid);
+            if (!r) continue;
+            kidsAbsSnap.push({ id:cid, type:'mapview_image', tl:{x:r.x,y:r.y}, w:r.w, h:r.h });
+            continue;
+          }
+          if (cn.layoutType==='viewport' && cn.vp){
+            const sz = nodeSizeGame(cn);
+            kidsAbsSnap.push({ id:cid, type:'viewport', tl:absBoxTopLeftGame(cid), w:sz.w, h:sz.h });
+            continue;
+          }
+          if (cn.layoutType==='anchor'){
+            kidsAbsSnap.push({ id:cid, type:'anchor', p:absAnchorPointGame(cid) });
+            continue;
+          }
+        }
       }
 
-      dragState = { kind:'groupScale', mode, beforeJson, start, bbox0:bbox, items:itemSnaps, lockAxis:null, changed:false };
+      dragState = { kind:'groupScale', mode, beforeJson, start, bbox0:bbox, items:itemSnaps, kidsAbsSnap, lockAxis:null, changed:false };
       return;
     }
 
@@ -5479,6 +5912,26 @@ return;
         setNodeFromAbsTLGame(id, newTL);
       }
 
+      if (dragState.kidsAbsSnap){
+        // Children of the selected items stay pinned in absolute space during grouped resize.
+        for (const snap of dragState.kidsAbsSnap){
+          const cn = idToNode.get(snap.id);
+          if (!cn) continue;
+          if (snap.type==='mapview_image' && isMapViewImageNode(cn)){
+            const img = cn.obj || {};
+            img.width = Math.max(0, Math.round(snap.w));
+            img.height = Math.max(0, Math.round(snap.h));
+            setNodeFromAbsTLGame(snap.id, snap.tl);
+          } else if (snap.type==='viewport' && cn.layoutType==='viewport' && cn.vp){
+            cn.vp.width = snap.w;
+            cn.vp.height = snap.h;
+            setNodeFromAbsTLGame(snap.id, snap.tl);
+          } else if (snap.type==='anchor' && cn.layoutType==='anchor'){
+            setNodeFromAbsTLGame(snap.id, {x: snap.p.x - ANCHOR_BOX/2, y: snap.p.y - ANCHOR_BOX/2});
+          }
+        }
+      }
+
       dragState.changed = true;
       refreshAll();
       syncOverlay(false);
@@ -5593,8 +6046,8 @@ return;
         }
       }
 
-      // Aspect lock (corners only): keep start ratio
-      if ((e.ctrlKey) && isCorner){
+      // Aspect lock: toolbar button or Ctrl keeps the start ratio during handle resize
+      if ((aspectLockEnabled || e.ctrlKey) && (isCorner || moveLeft || moveRight || moveTop || moveBottom)){
         const ratio = (dragState.startH>0) ? (dragState.startW / dragState.startH) : 1;
         let w = Math.max(minW, Math.round(R - L));
         let h = Math.max(minH, Math.round(B - T));
